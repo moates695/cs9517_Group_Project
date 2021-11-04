@@ -4,9 +4,7 @@ import matplotlib.pyplot as plt
 from glob import glob
 from scipy import ndimage
 from skimage.feature import peak_local_max
-from sklearn.cluster import DBSCAN, AffinityPropagation, MeanShift
 from matplotlib import cm
-from skimage.segmentation import chan_vese
 from scipy import ndimage
 from skimage.morphology import watershed
 import pickle
@@ -85,6 +83,12 @@ def erode(pts):
         if (x-1,y) in eroded1_pts and (x+1, y) in eroded1_pts:
             eroded2_pts[(x,y)] = eroded1_pts[(x,y)]
     return eroded2_pts
+
+# check coords within image bounds
+def check_coords(pt):
+    if pt[0] < 0 or pt[0] > NROWS-1 or pt[1] < 0 or pt[1] > NCOLS-1:
+        return False
+    return True
 
 # binary dialtion of points with 3x3 filter
 def dilate(pts):
@@ -199,11 +203,56 @@ def mix_labels(pts):
         pts[pt] = swap_labels[label]
     return pts
 
+def segment_CLAHE(img, show_img=False):
+    clahe = cv2.createCLAHE(clipLimit=80.0, tileGridSize=(25,25))
+    cl1 = clahe.apply(img)
+
+    hist = cv2.calcHist([cl1],[0],None,[257],[0,MAX])
+    from_max = hist[np.argmax(hist):]
+    for intensity, num in enumerate(from_max[:-1]):
+        if from_max[intensity+1] >= from_max[intensity]:
+            for i in range(30):
+                if intensity + i >= len(from_max):
+                    break
+                if from_max[intensity + i] < intensity - 250:
+                    break
+            else:
+                break
+
+    final = (intensity + np.argmax(hist)) * 255
+    seg = np.zeros_like(cl1)
+    cv2.threshold(cl1, dst=seg, thresh=final, maxval=MAX, type=cv2.THRESH_BINARY)
+    opens = np.zeros_like(seg)
+    elem = cv2.getStructuringElement(shape=cv2.MORPH_RECT, ksize=(5,5))
+    cv2.morphologyEx(seg, dst=opens, op=cv2.MORPH_OPEN, kernel=elem)
+    if show_img:
+        show(img)
+        show(opens)
+        plt.figure(figsize=(15,15))
+        plt.hist(cl1.ravel(),255)
+        plt.axvline(x=final, color='r')
+        plt.show()
+    return opens
+
+def delete_small(pts, area=250):
+    labels = get_labels(pts)
+    temp_pts = pts.copy()
+    del_labels = []
+    for label,pts in labels.items():
+        if len(pts) < area:
+            del_labels.append(label)
+    for pt, label in pts.items():
+        if label in del_labels: 
+            del temp_pts[pt]
+    return temp_pts
+
 def segment(img):
     thresh = segment_CLAHE(img)
     ws_pts = watershed_seg(thresh, min_dist=17)
     new_pts = seperate_open(ws_pts)
-    return mix_labels(new_pts)
+    mixed_pts = mix_labels(new_pts)
+    big_cell_pts = delete_small(mixed_pts)
+    return big_cell_pts
 
 def get_labels(pts):
     label = {}
