@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# segmented data
+marcus/segment_1.p
+marcus/segment_2.p
+marcus/segment_3.p
+marcus/segment_4.p
